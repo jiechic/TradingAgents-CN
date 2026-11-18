@@ -12,7 +12,9 @@ GitHub Actions → Publish TradingAgents 3.0 images → Run workflow，选择 `r
 - `ghcr.io/jiechic/tradingagents-v3-frontend:v3.0.0`
 
 这是独立镜像名，不覆盖原来的 v1.0.1。不要改旧 Stack 的镜像来直接升级。
-上游应用层许可限制再分发，新包保持私有供个人部署使用，不主动改成公开可下载。拉取私有包时，在 Portainer 的 Registries 中添加 GHCR，用户名 jiechic，密码使用有 read:packages 权限的 GitHub Token。不要把 Token 放进 Stack。
+已验证两个镜像当前可匿名拉取，Portainer 无需额外 GHCR 凭据。若你以后把包改为私有，需要在 Portainer 的 Registries 中添加 GHCR 凭据（用户名 jiechic，Token 具备 read:packages），不要将 Token 写入 Stack。
+
+上游 3.0 的应用层含专有许可条款，使用及分发范围请以仓库 LICENSE 为准。
 
 ## 首次部署：并行新实例
 
@@ -52,3 +54,13 @@ GitHub Actions → Publish TradingAgents 3.0 images → Run workflow，选择 `r
 该原域名不被 `*.jiechic.org` 覆盖，现有 cloudflare resolver 会按域名申请证书，应验证证书结果。
 
 回退时停止新版前后端，恢复旧 Stack 的入口；旧数据库保持原样。升级后新产生的数据不会自动合并回旧数据库。
+
+
+## 本次发布验证结果
+
+- 构建与发布：https://github.com/jiechic/TradingAgents-CN/actions/runs/44278627830 — success。
+- 发布后启动验证：https://github.com/jiechic/TradingAgents-CN/actions/runs/44279833319 — success。
+- AMD64 / ARM64 后端模块导入、前端构建、SPA 页面检查通过。
+- AMD64 发布镜像连接临时 MongoDB 8 与 Redis 启动成功，健康接口和首次 admin 登录通过。
+- 新空库数据库迁移：7项已执行、0项待执行。旧数据库升级仍需在备份副本上测试。
+- 镜像标签 v3.0.0 为多架构 manifest，含 linux/amd64 与 linux/arm64。
