@@ -81,3 +81,12 @@ python3 tools/release_version.py
 
 旧 `v3.0.0` 是误标记，已由 beta.4 镜像替代。专用手动工作流 **Remove mistaken v3.0.0 package versions** 仅清理两个包里的误标正式版及其架构标签；先确认 beta.4 已存在，并拒绝删除与其他标签共享的 digest。
 删除远端镜像版本不会更新已运行的容器。请将 Stack 镜像改为本指南 beta.4 标签，并重新拉取部署。
+
+## beta.4 发布验收记录
+
+- 构建源码提交：`248a788024392d42bce40c9bdacb7e50e6fac852`。
+- [双架构构建、完整启动验证及镜像发布](https://github.com/jiechic/TradingAgents-CN/actions/runs/44319106207)：成功。
+- AMD64 / ARM64 后端导入、前端不依赖后端启动、编译后的前端版本检查：通过。
+- 临时 MongoDB / Redis 环境中的后端健康、首次管理员登录、版本接口、前端 API 代理及后端地址改变后的恢复检查：通过。
+- [误发正式版本清理](https://github.com/jiechic/TradingAgents-CN/actions/runs/44320440921)：成功；仅删除两个包的 v3.0.0 / v3.0.0-amd64 / v3.0.0-arm64，保留 beta.4 和其他版本。
+- 以上为 GitHub Actions 临时环境验证，不代表服务器 Stack 已更新镜像，也不包含旧生产数据库迁移或真实模型分析验收。
