@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
-import { existsSync, statSync, createReadStream, cpSync } from 'fs'
+import { existsSync, statSync, createReadStream, cpSync, readFileSync } from 'fs'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
@@ -39,6 +39,9 @@ function courseImagesPlugin() {
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(readFileSync(resolve(__dirname, '../VERSION'), 'utf8').trim())
+  },
   plugins: [
     vue(),
     courseImagesPlugin(),

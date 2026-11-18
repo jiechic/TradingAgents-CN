@@ -1,14 +1,58 @@
-name: Publish TradingAgents 3.0 images
+name: Publish TradingAgents versioned images
 on:
   workflow_dispatch:
+  push:
+    branches: [release/v3.0]
+    paths-ignore: ['docs/**', '**/*.md']
 permissions:
   contents: read
   packages: write
 concurrency:
-  group: ghcr-v3
+  group: ghcr-v3-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  version:
+    if: github.ref == 'refs/heads/release/v3.0'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      candidate: ${{ steps.version.outputs.candidate }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Validate release metadata
+        run: |
+          version=$(python3 tools/release_version.py)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "candidate=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Refuse replacing an existing version with different source code
+        env:
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          for component in backend frontend; do
+            image="ghcr.io/${OWNER,,}/tradingagents-v3-$component:$TAG"
+            if docker buildx imagetools inspect "$image" --raw > /tmp/manifest.json 2>/tmp/manifest-error; then
+              revision=$(jq -r '.annotations["org.opencontainers.image.revision"] // empty' /tmp/manifest.json)
+              if [ "$revision" != "$GITHUB_SHA" ]; then
+                echo "::error::$TAG already exists for another commit. Bump VERSION with tools/release_version.py --set before publishing."
+                exit 1
+              fi
+            elif ! grep -Eqi 'not found|manifest unknown' /tmp/manifest-error; then
+              cat /tmp/manifest-error
+              exit 1
+            fi
+          done
   build:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -33,12 +77,20 @@ jobs:
           file: Dockerfile.backend
           load: true
           tags: local/backend:test
-          build-args: VCS_REF=${{ github.sha }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            APP_VERSION=${{ needs.version.outputs.version }}
           cache-from: type=gha,scope=v3-backend-${{ matrix.arch }}
           cache-to: type=gha,scope=v3-backend-${{ matrix.arch }},mode=max
-      - name: Validate backend imports
+      - name: Validate backend imports and baked version
+        env:
+          EXPECTED_VERSION: ${{ needs.version.outputs.version }}
         run: |
-          docker run --rm -e DEBUG=true -e JWT_SECRET=ci-test-only-secret-at-least-32-characters -e CSRF_SECRET=ci-test-only-csrf-at-least-32-characters --entrypoint python local/backend:test -c 'import app.main; import migrations.runner; print("Backend imports OK")'
+          docker run --rm -e DEBUG=false -e EXPECTED_VERSION \
+            -e JWT_SECRET=ephemeral-ci-jwt-secret-at-least-32-characters \
+            -e CSRF_SECRET=ephemeral-ci-csrf-secret-at-least-32-characters \
+            --entrypoint python local/backend:test \
+            -c 'import os; import app.main; import migrations.runner; assert app.main.get_version() == os.environ["EXPECTED_VERSION"]; assert app.main.get_build_info()["version"] == os.environ["EXPECTED_VERSION"]; print("Backend imports and version OK")'
       - name: Build frontend for validation
         uses: docker/build-push-action@v6
         with:
@@ -46,32 +98,44 @@ jobs:
           file: Dockerfile.frontend
           load: true
           tags: local/frontend:test
-          build-args: VCS_REF=${{ github.sha }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            APP_VERSION=${{ needs.version.outputs.version }}
           cache-from: type=gha,scope=v3-frontend-${{ matrix.arch }}
           cache-to: type=gha,scope=v3-frontend-${{ matrix.arch }},mode=max
-      - name: Validate frontend serves SPA
+      - name: Validate SPA starts without backend DNS
+        env:
+          EXPECTED_VERSION: ${{ needs.version.outputs.version }}
         run: |
           docker network create smoke
-          docker run -d --name backend --network smoke --entrypoint sleep local/backend:test 120
           docker run -d --name frontend --network smoke -p 18080:80 local/frontend:test
-          for attempt in $(seq 1 15); do
+          for attempt in $(seq 1 20); do
             if curl -fsS http://localhost:18080/ > /tmp/page; then break; fi
             sleep 2
           done
           grep -q '<html' /tmp/page
           curl -fsS http://localhost:18080/login > /dev/null
-      - name: Publish validated architecture images
+          docker exec frontend sh -c 'grep -R -F "$1" /usr/share/nginx/html/assets >/dev/null' sh "$EXPECTED_VERSION"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18080/api/health)
+          test "$code" = 502
+      - name: Publish validated candidate images
         env:
           OWNER: ${{ github.repository_owner }}
           ARCH: ${{ matrix.arch }}
+          CANDIDATE: ${{ needs.version.outputs.candidate }}
         run: |
           for component in backend frontend; do
             image="ghcr.io/${OWNER,,}/tradingagents-v3-$component"
-            docker tag "local/$component:test" "$image:v3.0.0-$ARCH"
-            docker push "$image:v3.0.0-$ARCH"
+            docker tag "local/$component:test" "$image:$CANDIDATE-$ARCH"
+            docker push "$image:$CANDIDATE-$ARCH"
           done
+  integration:
+    needs: [version, build]
+    uses: ./.github/workflows/verify-v3.yml
+    with:
+      image_tag: ${{ needs.version.outputs.candidate }}-amd64
   manifests:
-    needs: build
+    needs: [version, build, integration]
     runs-on: ubuntu-latest
     steps:
       - uses: docker/setup-buildx-action@v3
@@ -80,12 +144,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish multi-architecture release tags
+      - name: Publish verified multi-architecture version tags
         env:
           OWNER: ${{ github.repository_owner }}
+          TAG: ${{ needs.version.outputs.tag }}
+          CANDIDATE: ${{ needs.version.outputs.candidate }}
         run: |
           for component in backend frontend; do
             image="ghcr.io/${OWNER,,}/tradingagents-v3-$component"
-            docker buildx imagetools create -t "$image:v3.0.0" "$image:v3.0.0-amd64" "$image:v3.0.0-arm64"
-            docker buildx imagetools inspect "$image:v3.0.0"
+            docker buildx imagetools create \
+              --annotation "index:org.opencontainers.image.revision=$GITHUB_SHA" \
+              --annotation "index:org.opencontainers.image.version=${TAG#v}" \
+              -t "$image:$TAG" "$image:$CANDIDATE-amd64" "$image:$CANDIDATE-arm64"
+            docker buildx imagetools inspect "$image:$TAG"
           done

@@ -30,7 +30,7 @@ services:
       timeout: 5s
       retries: 12
   backend:
-    image: ghcr.io/jiechic/tradingagents-v3-backend:v3.0.0
+    image: ghcr.io/jiechic/tradingagents-v3-backend:v3.0.0-beta.4
     restart: unless-stopped
     ports:
       - "10.10.3.50:19111:8000"
@@ -82,11 +82,10 @@ services:
         traefik.http.routers.ta-v3-backend.tls.certresolver=cloudflare,\
         traefik.http.routers.ta-v3-backend.service=docker-portainer-tradingagents-v3-backend"
   frontend:
-    image: ghcr.io/jiechic/tradingagents-v3-frontend:v3.0.0
+    image: ghcr.io/jiechic/tradingagents-v3-frontend:v3.0.0-beta.4
     restart: unless-stopped
     ports:
       - "10.10.3.50:19112:80"
-    depends_on: [backend]
     networks: [access]
     labels:
       SERVICE_NAME: docker-portainer-tradingagents-v3-frontend

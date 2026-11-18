@@ -1,7 +1,8 @@
 FROM python:3.11-slim-bookworm
 ARG VCS_REF
+ARG APP_VERSION
 LABEL org.opencontainers.image.source="https://github.com/jiechic/TradingAgents-CN" \
-      org.opencontainers.image.version="3.0.0" \
+      org.opencontainers.image.version=$APP_VERSION \
       org.opencontainers.image.revision=$VCS_REF
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TZ=Asia/Shanghai DOCKER_CONTAINER=true
 WORKDIR /app
@@ -12,6 +13,7 @@ COPY pyproject.toml README.md ./
 # Upstream uv.lock belongs to an older project; resolve the current pyproject instead.
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir .
 COPY . .
+RUN python tools/write_build_info.py --revision "$VCS_REF" --version "$APP_VERSION"
 RUN mkdir -p data logs reports results cache && python -m compileall -q app core migrations tradingagents
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=5 \

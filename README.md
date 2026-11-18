@@ -1,5 +1,7 @@
 # TradingAgents-CN 社区版（Community Edition）
 
+本 fork 当前版本：**v3.0.0-beta.4（测试版）**。版本来源、构建和部署见 [部署指南](deploy/README-v3.md)。
+
 **English**: TradingAgents-CN Community Edition is a hybrid-licensed (Apache-2.0 core engine + proprietary source-available application layer) multi-agent stock research assistant for the Chinese A-share market. It orchestrates LLM-based analyst agents for debate-style research, natural-language stock screening, paper trading and study courses. For learning and research only — **not investment advice**.
 
 [![License](https://img.shields.io/badge/License-Hybrid_(Apache--2.0_+_Proprietary)-blue.svg)](./LICENSE)

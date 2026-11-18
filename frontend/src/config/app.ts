@@ -1,6 +1,5 @@
-const fallbackVersion = '3.0.0-beta.4'
-
-const appVersion = (import.meta.env.VITE_APP_VERSION || '').trim() || fallbackVersion
+// Vite injects the repository VERSION for both development and production.
+const appVersion = (import.meta.env.VITE_APP_VERSION || '').trim() || 'unknown'
 
 export const APP_CONFIG = {
   version: appVersion,

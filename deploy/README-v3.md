@@ -3,13 +3,27 @@
 ## 构建和发布
 
 源码来自上游 v3.0 提交 `51060a7682cf51810b4bc3a704829438d18cd8dc`，位于本 fork 的 `release/v3.0` 分支。
-GitHub Actions → Publish TradingAgents 3.0 images → Run workflow，选择 `release/v3.0`。
-构建在 GitHub 原生 amd64 / arm64 runner 执行，分别验证 Python 模块导入与前端 SPA，再发布架构镜像和多架构标签。
+当前为 **v3.0.0-beta.4 测试版**。上游的 VERSION / package.json 与 BUILD_INFO 曾不一致，本 fork 已统一修正。
+
+`VERSION` 是发布版本的唯一来源。前端构建从该文件注入显示版本，后端读取 VERSION 和镜像生成的 BUILD_INFO，OCI 镜像标签也使用同一版本。
+向 `release/v3.0` 推送或合并代码会自动运行 GitHub Actions；也可以手动运行 **Publish TradingAgents versioned images**，选择 `release/v3.0`。
+流程先检查各处版本一致，再在原生 AMD64 / ARM64 runner 构建，验证后端导入、前端在后端离线时仍能启动，再运行完整临时数据库、代理恢复、版本接口和登录检查。全部通过后才发布多架构版本标签。
+
+下次合并上游新版本后，在同一个待发布提交中执行，例如：
+
+```bash
+python3 tools/release_version.py --set 3.0.0-beta.5
+python3 tools/release_version.py
+```
+
+该命令同步 VERSION、Python/前端包信息、BUILD_INFO、部署模板和本指南。提交这些变更并合并到 `release/v3.0`，Actions 就会发布 `v3.0.0-beta.5`。版本号必须与实际合入的上游版本相符；同一上游版本的自有修订可使用 `3.0.0-beta.4` 之后的新预发布编号，明确记录对应上游提交。
+已有版本绑定构建提交，不会被不同提交覆盖；不发布 `latest`、`v3` 等含糊标签。后续代码修改需要递增版本，不能把 beta 自动当成正式版。
+默认 main 仍保留旧版应用；请在 release/v3.0 分支运行新版本工作流。
 
 镜像：
 
-- `ghcr.io/jiechic/tradingagents-v3-backend:v3.0.0`
-- `ghcr.io/jiechic/tradingagents-v3-frontend:v3.0.0`
+- `ghcr.io/jiechic/tradingagents-v3-backend:v3.0.0-beta.4`
+- `ghcr.io/jiechic/tradingagents-v3-frontend:v3.0.0-beta.4`
 
 这是独立镜像名，不覆盖原来的 v1.0.1。不要改旧 Stack 的镜像来直接升级。
 已验证两个镜像当前可匿名拉取，Portainer 无需额外 GHCR 凭据。若你以后把包改为私有，需要在 Portainer 的 Registries 中添加 GHCR 凭据（用户名 jiechic，Token 具备 read:packages），不要将 Token 写入 Stack。
@@ -56,11 +70,14 @@ GitHub Actions → Publish TradingAgents 3.0 images → Run workflow，选择 `r
 回退时停止新版前后端，恢复旧 Stack 的入口；旧数据库保持原样。升级后新产生的数据不会自动合并回旧数据库。
 
 
-## 本次发布验证结果
+## 故障处理
 
-- 构建与发布：https://github.com/jiechic/TradingAgents-CN/actions/runs/44278627830 — success。
-- 发布后启动验证：https://github.com/jiechic/TradingAgents-CN/actions/runs/44279833319 — success。
-- AMD64 / ARM64 后端模块导入、前端构建、SPA 页面检查通过。
-- AMD64 发布镜像连接临时 MongoDB 8 与 Redis 启动成功，健康接口和首次 admin 登录通过。
-- 新空库数据库迁移：7项已执行、0项待执行。旧数据库升级仍需在备份副本上测试。
-- 镜像标签 v3.0.0 为多架构 manifest，含 linux/amd64 与 linux/arm64。
+- 后端出现 `JWT_SECRET is still the default value`：在 Portainer Stack 环境变量中填写不同的随机 JWT_SECRET / CSRF_SECRET，并确认 backend.environment 引用了它们，然后重新部署。仅重启旧容器不会更新环境变量；不要关闭生产密钥检查。
+- 新镜像前端使用 Docker DNS 按请求解析 backend，后端离线时页面仍可打开，API 暂时返回 502，恢复后自动重连。
+- 前后端必须共享普通 access 网络，backend 另接 internal 数据库网络。仅 internal 网络会导致宿主机映射端口不可用。
+- 首次 NFS 挂载出现 no such file or directory：先在 TrueNAS 创建上述导出目录并授权；Compose 不会替你创建远端目录。
+
+## 误发正式版的处理
+
+旧 `v3.0.0` 是误标记，已由 beta.4 镜像替代。专用手动工作流 **Remove mistaken v3.0.0 package versions** 仅清理两个包里的误标正式版及其架构标签；先确认 beta.4 已存在，并拒绝删除与其他标签共享的 digest。
+删除远端镜像版本不会更新已运行的容器。请将 Stack 镜像改为本指南 beta.4 标签，并重新拉取部署。

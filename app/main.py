@@ -71,10 +71,10 @@ def get_version() -> str:
     try:
         version_file = Path(__file__).parent.parent / "VERSION"
         if version_file.exists():
-            return version_file.read_text(encoding='utf-8').strip()
+            return version_file.read_text(encoding='utf-8-sig').strip()
     except Exception:
         pass
-    return "2.1.0"  # 默认版本号
+    return "unknown"  # 不将缺失的版本信息误报为历史正式版
 
 
 def get_build_info() -> dict:
@@ -83,7 +83,7 @@ def get_build_info() -> dict:
         build_info_file = Path(__file__).parent.parent / "BUILD_INFO"
         if build_info_file.exists():
             import json
-            return json.loads(build_info_file.read_text(encoding='utf-8'))
+            return json.loads(build_info_file.read_text(encoding='utf-8-sig'))
     except Exception as e:
         logging.debug(f"Failed to read BUILD_INFO: {e}")
     return {}
