@@ -1,0 +1,23 @@
+name: Remove mistaken v3.0.0 package versions
+on:
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: 'Delete only mistaken v3.0.0 / amd64 / arm64 versions after beta.4 exists'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: write
+jobs:
+  cleanup:
+    if: github.ref == 'refs/heads/release/v3.0'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove only mistaken stable versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          EXECUTE: ${{ inputs.execute }}
+        run: python3 tools/remove_mistagged_packages.py
