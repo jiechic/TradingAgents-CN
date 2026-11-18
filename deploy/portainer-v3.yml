@@ -2,7 +2,7 @@
 # The old stack, database, and NFS /app directory must remain separate.
 services:
   mongodb:
-    image: mongo:8.0
+    image: public.ecr.aws/docker/library/mongo:8.0
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
@@ -16,7 +16,7 @@ services:
       timeout: 5s
       retries: 12
   redis:
-    image: redis:7-alpine
+    image: public.ecr.aws/docker/library/redis:7-alpine
     restart: unless-stopped
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
