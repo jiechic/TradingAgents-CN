@@ -1,0 +1,119 @@
+# Deploy as a NEW Portainer stack named tradingagents-v3.
+# The old stack, database, and NFS /app directory must remain separate.
+services:
+  mongodb:
+    image: mongo:8.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?set MONGO_PASSWORD}
+    volumes:
+      - mongodb_v3:/data/db
+    networks: [internal]
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, "quit(db.adminCommand('ping').ok ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes:
+      - redis_v3:/data
+    networks: [internal]
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  backend:
+    image: ghcr.io/jiechic/tradingagents-v3-backend:v3.0.0
+    restart: unless-stopped
+    ports:
+      - "10.10.3.50:19111:8000"
+    dns: [10.10.3.1]
+    environment:
+      TZ: Asia/Shanghai
+      DEBUG: "false"
+      MONGODB_HOST: mongodb
+      MONGODB_PORT: "27017"
+      MONGODB_USERNAME: admin
+      MONGODB_PASSWORD: ${MONGO_PASSWORD}
+      MONGODB_DATABASE: tradingagentscn_v3
+      MONGODB_AUTH_SOURCE: admin
+      MONGODB_CONNECTION_STRING: mongodb://admin:${MONGO_PASSWORD}@mongodb:27017/tradingagentscn_v3?authSource=admin
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      CSRF_SECRET: ${CSRF_SECRET:?set CSRF_SECRET}
+      ADMIN_DEFAULT_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+      ALLOWED_ORIGINS: '["https://tradingagents-v3.jiechic.org"]'
+      TRADINGAGENTS_DATA_DIR: /app/data
+      TRADINGAGENTS_RESULTS_DIR: /app/results
+      TRADINGAGENTS_CACHE_DIR: /app/cache
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - backend_data_v3:/app/data
+      - backend_logs_v3:/app/logs
+      - backend_results_v3:/app/results
+    networks: [access, internal]
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      SERVICE_NAME: docker-portainer-tradingagents-v3-backend
+      SERVICE_8000_NAME: docker-portainer-tradingagents-v3-backend
+      SERVICE_8000_CHECK_HTTP: /api/health
+      SERVICE_8000_CHECK_INTERVAL: 15s
+      SERVICE_8000_CHECK_TIMEOUT: 5s
+      SERVICE_8000_TAGS: "traefik.enable=true,\
+        traefik.http.routers.ta-v3-backend.rule=Host(`tradingagents-v3.jiechic.org`) && (PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/redoc`) || Path(`/openapi.json`)),\
+        traefik.http.routers.ta-v3-backend.entrypoints=websecure,\
+        traefik.http.routers.ta-v3-backend.priority=100,\
+        traefik.http.routers.ta-v3-backend.tls=true,\
+        traefik.http.routers.ta-v3-backend.tls.certresolver=cloudflare,\
+        traefik.http.routers.ta-v3-backend.service=docker-portainer-tradingagents-v3-backend"
+  frontend:
+    image: ghcr.io/jiechic/tradingagents-v3-frontend:v3.0.0
+    restart: unless-stopped
+    ports:
+      - "10.10.3.50:19112:80"
+    depends_on: [backend]
+    networks: [access]
+    labels:
+      SERVICE_NAME: docker-portainer-tradingagents-v3-frontend
+      SERVICE_80_NAME: docker-portainer-tradingagents-v3-frontend
+      SERVICE_80_CHECK_HTTP: /
+      SERVICE_80_CHECK_INTERVAL: 15s
+      SERVICE_80_CHECK_TIMEOUT: 5s
+      SERVICE_80_TAGS: "traefik.enable=true,\
+        traefik.http.routers.ta-v3-frontend.rule=Host(`tradingagents-v3.jiechic.org`),\
+        traefik.http.routers.ta-v3-frontend.entrypoints=websecure,\
+        traefik.http.routers.ta-v3-frontend.priority=10,\
+        traefik.http.routers.ta-v3-frontend.tls=true,\
+        traefik.http.routers.ta-v3-frontend.tls.certresolver=cloudflare,\
+        traefik.http.routers.ta-v3-frontend.service=docker-portainer-tradingagents-v3-frontend"
+networks:
+  access:
+    driver: bridge
+  internal:
+    internal: true
+volumes:
+  mongodb_v3:
+  redis_v3:
+  backend_logs_v3:
+  backend_results_v3:
+  backend_data_v3:
+    driver: local
+    driver_opts:
+      type: nfs
+      device: ":/mnt/Data/Application/TradingAgents-CN-v3/data"
+      o: "addr=infra-truenas-nfs.service.consul,rw,nfsvers=4.1,proto=tcp,hard,timeo=600,retrans=2"
