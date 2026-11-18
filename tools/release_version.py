@@ -34,9 +34,17 @@ def update(version):
     data = {'version': version, 'full_version': version, 'build_type': 'source',
             'git_commit': None, 'build_timestamp': None, 'build_date': None, 'build_unix': None}
     path.write_text(json.dumps(data, indent=2) + '\n')
+    # Update only current release references; historical release names stay intact.
+    label = '测试版' if '-' in version else '正式版'
     for name in ('deploy/portainer-v3.yml', 'deploy/README-v3.md', 'README.md'):
         path = ROOT / name
-        path.write_text(re.sub(r'v' + PATTERN, 'v' + version, path.read_text()))
+        content = re.sub(r'(tradingagents-v3-(?:backend|frontend):)v' + PATTERN,
+                         lambda match: match[1] + 'v' + version, path.read_text())
+        content = re.sub(r'本 fork 当前版本：\*\*v' + PATTERN + r'（[^）]+）\*\*',
+                         f'本 fork 当前版本：**v{version}（{label}）**', content)
+        content = re.sub(r'当前为 \*\*v' + PATTERN + r' [^*]+\*\*',
+                         f'当前为 **v{version} {label}**', content)
+        path.write_text(content)
 
 
 def validate():
