@@ -115,7 +115,7 @@ jobs:
           done
           grep -q '<html' /tmp/page
           curl -fsS http://localhost:18080/login > /dev/null
-          docker exec frontend sh -c 'grep -R -F "$1" /usr/share/nginx/html/assets >/dev/null' sh "$EXPECTED_VERSION"
+          docker exec frontend sh -c 'grep -R -F "$1" /usr/share/nginx/html/js >/dev/null' sh "$EXPECTED_VERSION"
           code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18080/api/health)
           test "$code" = 502
       - name: Publish validated candidate images
@@ -129,6 +129,11 @@ jobs:
             docker tag "local/$component:test" "$image:$CANDIDATE-$ARCH"
             docker push "$image:$CANDIDATE-$ARCH"
           done
+      - name: Build diagnostics
+        if: failure()
+        run: |
+          docker logs frontend --tail 60 || true
+          docker exec frontend ls -la /usr/share/nginx/html || true
   integration:
     needs: [version, build]
     uses: ./.github/workflows/verify-v3.yml
